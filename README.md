@@ -32,6 +32,7 @@ The MCP server provides these tools for LLM integrations:
 ## Voice Samples
 
 > **Important:** Voice quality depends heavily on the reference sample.
+> Samples can be found at https://www.voiceover-samples.com/languages/german-voiceover/
 
 Place voice files in the `voices/` directory. Each voice consists of:
 - `<name>.wav` — The reference audio sample
