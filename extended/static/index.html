@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qwen3-TTS Extended — Long-Form TTS</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --bg-card: #12121f;
+            --bg-hover: #1a1a2e;
+            --accent: #00ff88;
+            --accent-dim: #00cc6a;
+            --secondary: #00aaff;
+            --danger: #ff5555;
+            --warn: #ffaa00;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --border: rgba(0, 255, 136, 0.15);
+            --border-hover: rgba(0, 255, 136, 0.4);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 30px;
+        }
+        header h1 {
+            color: var(--accent);
+            font-size: 22px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        header p { color: var(--text-dim); font-size: 13px; margin-top: 8px; }
+        .grid { display: grid; grid-template-columns: 1fr 360px; gap: 24px; }
+        @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 22px;
+            transition: border-color 0.3s;
+        }
+        .card:hover { border-color: var(--border-hover); }
+        .card h2 {
+            color: var(--accent);
+            font-size: 15px;
+            margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        label {
+            display: block;
+            color: var(--text-dim);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+        textarea, select {
+            width: 100%;
+            background: #08080f;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 14px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+            resize: vertical;
+        }
+        textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 12px rgba(0,255,136,0.12); }
+        textarea { min-height: 160px; }
+        select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2300ff88' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+        @media (max-width: 500px) { .row { grid-template-columns: 1fr; } }
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+            color: #000;
+            border: none; border-radius: 8px; padding: 12px 22px;
+            font-family: inherit; font-size: 13px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 1px;
+            cursor: pointer; transition: all 0.25s;
+        }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0,255,136,0.25); }
+        .btn:disabled { background: #2a2a35; color: #666; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn.secondary { background: linear-gradient(135deg, var(--secondary) 0%, #0077cc 100%); color: #fff; }
+        .btn.danger { background: linear-gradient(135deg, var(--danger) 0%, #cc3333 100%); color: #fff; }
+        .btn.sm { padding: 8px 14px; font-size: 11px; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+        .status-msg { padding: 12px 14px; border-radius: 8px; margin-top: 14px; font-size: 13px; display: none; }
+        .status-msg.visible { display: block; }
+        .status-msg.error { background: rgba(255,85,85,0.12); border: 1px solid rgba(255,85,85,0.4); color: var(--danger); }
+        .status-msg.success { background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.35); color: var(--accent); }
+        .status-msg.warn { background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.35); color: var(--warn); }
+
+        /* Progress */
+        .progress-wrap { margin: 16px 0; }
+        .progress-bar-bg { height: 10px; background: #08080f; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.06); }
+        .progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--secondary)); border-radius: 5px; transition: width 0.4s ease; }
+        .progress-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+        /* Chunks preview / list */
+        .chunk-list { display: grid; gap: 10px; margin-top: 14px; }
+        .chunk-item {
+            background: #08080f;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 12px;
+            display: grid;
+            gap: 8px;
+        }
+        .chunk-header { display: flex; justify-content: space-between; align-items: center; }
+        .chunk-idx { color: var(--accent); font-weight: 700; font-size: 12px; }
+        .chunk-badge {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 8px; border-radius: 4px;
+        }
+        .chunk-badge.pending { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+        .chunk-badge.running { background: rgba(0,170,255,0.15); color: var(--secondary); }
+        .chunk-badge.done { background: rgba(0,255,136,0.12); color: var(--accent); }
+        .chunk-badge.failed { background: rgba(255,85,85,0.15); color: var(--danger); }
+        .chunk-text { font-size: 12px; color: #ccc; line-height: 1.5; }
+        .chunk-actions { display: flex; gap: 8px; align-items: center; }
+        audio { width: 100%; outline: none; margin-top: 6px; }
+
+        /* Jobs sidebar */
+        .job-item {
+            background: #08080f;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .job-item:hover { border-color: var(--border-hover); }
+        .job-item.active { border-color: var(--accent); }
+        .job-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .job-id { font-size: 11px; color: var(--accent); }
+        .job-status {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 4px;
+        }
+        .job-status.pending { background: rgba(255,255,255,0.06); color: var(--text-dim); }
+        .job-status.running { background: rgba(0,170,255,0.15); color: var(--secondary); }
+        .job-status.done { background: rgba(0,255,136,0.12); color: var(--accent); }
+        .job-status.failed { background: rgba(255,85,85,0.15); color: var(--danger); }
+        .job-status.cancelled { background: rgba(255,170,0,0.12); color: var(--warn); }
+        .job-meta { font-size: 11px; color: var(--text-dim); }
+
+        /* Final player */
+        .final-player { margin-top: 16px; padding: 14px; background: #08080f; border: 1px solid var(--border); border-radius: 10px; }
+        .final-player label { color: var(--accent); font-size: 12px; margin-bottom: 8px; }
+
+        .spinner {
+            width: 16px; height: 16px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 1s linear infinite; display: none;
+        }
+        .btn.loading .spinner { display: inline-block; }
+        .btn.loading .btn-text { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty { color: var(--text-dim); font-size: 12px; text-align: center; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Qwen3-TTS Extended Proxy</h1>
+            <p>Long-form German text-to-speech with intelligent chunking, custom voices, and live progress</p>
+        </header>
+
+        <div class="grid">
+            <div class="main-col">
+                <div class="card">
+                    <h2>▸ Text & Voice</h2>
+                    <div class="row">
+                        <div>
+                            <label for="voiceSelect">Voice</label>
+                            <select id="voiceSelect"></select>
+                        </div>
+                        <div>
+                            <label for="languageSelect">Language</label>
+                            <select id="languageSelect">
+                                <option value="German" selected>German</option>
+                                <option value="English">English</option>
+                                <option value="Chinese">Chinese</option>
+                                <option value="Japanese">Japanese</option>
+                                <option value="Korean">Korean</option>
+                                <option value="French">French</option>
+                                <option value="Spanish">Spanish</option>
+                                <option value="Russian">Russian</option>
+                                <option value="Portuguese">Portuguese</option>
+                                <option value="Italian">Italian</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div>
+                            <label for="modelSelect">Model</label>
+                            <select id="modelSelect">
+                                <option value="1.7B" selected>1.7B (High quality)</option>
+                            </select>
+                            <small id="modelStatus" style="color: #666; font-size: 11px; margin-top: 4px; display: block;">Checking backend...</small>
+                        </div>
+                    </div>
+                    <label for="textInput">Text</label>
+                    <textarea id="textInput" placeholder="Gib hier deinen langen deutschen Text ein...">Hallo! Das ist ein Beispieltext für die deutsche Sprachsynthese. Du kannst hier sehr lange Texte eingeben, die automatisch in sinnvolle Sätze aufgeteilt und nacheinander vorgelesen werden.</textarea>
+                    <div style="margin: 12px 0; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="noDriftCheck" checked style="width: 16px; height: 16px; cursor: pointer;">
+                        <label for="noDriftCheck" style="margin-bottom: 0; text-transform: none; font-size: 12px; color: var(--text); cursor: pointer;">
+                            Minimize voice drift (consistent voice across chunks — slower first chunk)
+                        </label>
+                    </div>
+                    <div class="actions">
+                        <button class="btn secondary" id="previewBtn">
+                            <span class="btn-text">Preview Chunks</span>
+                            <span class="spinner"></span>
+                        </button>
+                        <button class="btn" id="generateBtn">
+                            <span class="btn-text">Generate</span>
+                            <span class="spinner"></span>
+                        </button>
+                    </div>
+                    <div class="status-msg" id="statusMsg"></div>
+                </div>
+
+                <div class="card" id="previewCard" style="display:none;">
+                    <h2>▸ Chunk Preview</h2>
+                    <div class="progress-meta"><span id="previewCount">0 chunks</span></div>
+                    <div class="chunk-list" id="previewList"></div>
+                </div>
+
+                <div class="card" id="progressCard" style="display:none;">
+                    <h2>▸ Live Progress</h2>
+                    <div class="progress-wrap">
+                        <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+                        <div class="progress-meta">
+                            <span id="progressText">0 / 0 done</span>
+                            <span id="etaText">ETA: --</span>
+                        </div>
+                    </div>
+                    <div class="actions" id="runningActions">
+                        <button class="btn danger sm" id="cancelBtn">Cancel</button>
+                    </div>
+                    <div class="chunk-list" id="liveChunkList"></div>
+                    <div class="final-player" id="finalPlayer" style="display:none;">
+                        <label>Final Audio</label>
+                        <audio id="finalAudio" controls></audio>
+                        <div class="actions" style="margin-top:10px;">
+                            <a class="btn secondary sm" id="dlFinalBtn" href="#" target="_blank">Download Final MP3</a>
+                            <a class="btn secondary sm" id="dlZipBtn" href="#" target="_blank">Download ZIP</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="side-col">
+                <div class="card">
+                    <h2>▸ Jobs</h2>
+                    <div id="jobsList"><div class="empty">No jobs yet</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = '';
+        let currentJobId = null;
+        let eventSource = null;
+        let pollInterval = null;
+
+        async function loadVoices() {
+            try {
+                const res = await fetch(`${API}/api/voices`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const sel = document.getElementById('voiceSelect');
+                sel.innerHTML = '';
+                data.voices.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.name;
+                    const mode = v.has_transcript ? 'ICL' : 'X-Vector';
+                    opt.textContent = `${v.name} (${mode})`;
+                    sel.appendChild(opt);
+                });
+            } catch (e) { console.warn('Could not load voices', e); }
+        }
+
+        async function loadBackendModels() {
+            try {
+                const res = await fetch(`${API}/api/backend/models`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const statusEl = document.getElementById('modelStatus');
+                const selectEl = document.getElementById('modelSelect');
+                let statusText = '';
+                data.models.forEach(m => {
+                    const opt = selectEl.querySelector(`option[value="${m.id}"]`);
+                    if (opt) {
+                        if (m.ready) {
+                            opt.textContent = `${m.id} (${m.model_id.split('/').pop()})`;
+                        } else {
+                            opt.textContent = `${m.id} (${m.status})`;
+                            opt.disabled = true;
+                        }
+                    }
+                    if (m.ready) {
+                        statusText += `${m.id}: ready `;
+                    } else {
+                        statusText += `${m.id}: ${m.status} `;
+                    }
+                });
+                statusEl.textContent = statusText.trim();
+                statusEl.style.color = data.models.some(m => m.ready) ? '#00ff88' : '#ff5555';
+            } catch (e) {
+                document.getElementById('modelStatus').textContent = 'Backends unreachable';
+            }
+        }
+
+        function setStatus(msg, type) {
+            const el = document.getElementById('statusMsg');
+            el.textContent = msg;
+            el.className = 'status-msg visible ' + (type || '');
+        }
+        function clearStatus() { document.getElementById('statusMsg').className = 'status-msg'; }
+
+        function setLoading(id, loading) {
+            const btn = document.getElementById(id);
+            if (loading) btn.classList.add('loading');
+            else btn.classList.remove('loading');
+            btn.disabled = loading;
+        }
+
+        document.getElementById('previewBtn').addEventListener('click', async () => {
+            const text = document.getElementById('textInput').value.trim();
+            if (!text) { setStatus('Please enter some text.', 'error'); return; }
+            setLoading('previewBtn', true); clearStatus();
+            try {
+                const res = await fetch(`${API}/api/preview`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({text})
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Preview failed');
+                renderPreview(data.chunks);
+            } catch (e) { setStatus(e.message, 'error'); }
+            setLoading('previewBtn', false);
+        });
+
+        function renderPreview(chunks) {
+            document.getElementById('previewCard').style.display = 'block';
+            document.getElementById('previewCount').textContent = `${chunks.length} chunk${chunks.length!==1?'s':''}`;
+            const list = document.getElementById('previewList');
+            list.innerHTML = '';
+            chunks.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'chunk-item';
+                div.innerHTML = `
+                    <div class="chunk-header">
+                        <span class="chunk-idx">#${c.index + 1}</span>
+                        <span class="chunk-badge pending">Preview</span>
+                    </div>
+                    <div class="chunk-text">${escapeHtml(c.text)}</div>
+                    <div class="chunk-header" style="margin-top:4px;">
+                        <span style="font-size:11px;color:#666;">${c.char_count} chars</span>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', async () => {
+            const text = document.getElementById('textInput').value.trim();
+            const voice = document.getElementById('voiceSelect').value;
+            const language = document.getElementById('languageSelect').value;
+            const noDrift = document.getElementById('noDriftCheck').checked;
+            const model = document.getElementById('modelSelect').value;
+            if (!text) { setStatus('Please enter some text.', 'error'); return; }
+            if (!voice) { setStatus('Please select a voice.', 'error'); return; }
+            setLoading('generateBtn', true); clearStatus();
+            try {
+                const res = await fetch(`${API}/api/jobs`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({text, voice, language, no_drift: noDrift, model})
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to create job');
+                currentJobId = data.id;
+                startMonitoring(data.id);
+                loadJobs();
+            } catch (e) { setStatus(e.message, 'error'); }
+            setLoading('generateBtn', false);
+        });
+
+        document.getElementById('cancelBtn').addEventListener('click', async () => {
+            if (!currentJobId) return;
+            try {
+                await fetch(`${API}/api/jobs/${currentJobId}`, {method: 'DELETE'});
+            } catch (e) { console.warn(e); }
+        });
+
+        function startMonitoring(jobId) {
+            // Reset UI
+            document.getElementById('progressCard').style.display = 'block';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressText').textContent = '0 / 0 done';
+            document.getElementById('etaText').textContent = 'ETA: --';
+            document.getElementById('liveChunkList').innerHTML = '';
+            document.getElementById('finalPlayer').style.display = 'none';
+            document.getElementById('runningActions').style.display = 'flex';
+            document.getElementById('cancelBtn').disabled = false;
+
+            closeMonitoring();
+
+            // Try SSE first
+            if (typeof EventSource !== 'undefined') {
+                try {
+                    eventSource = new EventSource(`${API}/api/jobs/${jobId}/stream`);
+                    eventSource.onmessage = (e) => {
+                        const msg = JSON.parse(e.data);
+                        if (msg.event === 'heartbeat') return;
+                        applyJobUpdate(msg.data || msg);
+                    };
+                    eventSource.onerror = () => {
+                        // Fall back to polling
+                        eventSource.close();
+                        eventSource = null;
+                        startPolling(jobId);
+                    };
+                } catch (e) {
+                    startPolling(jobId);
+                }
+            } else {
+                startPolling(jobId);
+            }
+        }
+
+        function startPolling(jobId) {
+            pollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${API}/api/jobs/${jobId}`);
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    applyJobUpdate(data);
+                } catch (e) { console.warn('Poll error', e); }
+            }, 1500);
+        }
+
+        function closeMonitoring() {
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+        }
+
+        function applyJobUpdate(job) {
+            if (!job) return;
+            const total = job.total_chunks || 0;
+            const done = job.completed_chunks || 0;
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            document.getElementById('progressFill').style.width = pct + '%';
+            document.getElementById('progressText').textContent = `${done} / ${total} done`;
+
+            if (job.eta_seconds != null && job.eta_seconds > 0) {
+                document.getElementById('etaText').textContent = `ETA: ${formatTime(job.eta_seconds)}`;
+            } else if (job.status === 'done') {
+                document.getElementById('etaText').textContent = 'Done';
+            } else if (job.status === 'cancelled') {
+                document.getElementById('etaText').textContent = 'Cancelled';
+            }
+
+            const list = document.getElementById('liveChunkList');
+            // Rebuild chunk list if not already rendered or count mismatch
+            if (list.children.length !== total) {
+                list.innerHTML = '';
+                (job.chunks || []).forEach(c => list.appendChild(createChunkEl(c, job.id)));
+            } else {
+                (job.chunks || []).forEach(c => updateChunkEl(c, job.id));
+            }
+
+            if (job.status === 'done') {
+                document.getElementById('runningActions').style.display = 'none';
+                if (job.final_mp3) {
+                    document.getElementById('finalPlayer').style.display = 'block';
+                    document.getElementById('finalAudio').src = `${API}/api/jobs/${job.id}/download/final`;
+                    document.getElementById('dlFinalBtn').href = `${API}/api/jobs/${job.id}/download/final`;
+                    document.getElementById('dlZipBtn').href = `${API}/api/jobs/${job.id}/download/zip`;
+                }
+                closeMonitoring();
+                loadJobs();
+            } else if (['failed','cancelled'].includes(job.status)) {
+                document.getElementById('runningActions').style.display = 'none';
+                closeMonitoring();
+                loadJobs();
+            }
+        }
+
+        function createChunkEl(chunk, jobId) {
+            const div = document.createElement('div');
+            div.className = 'chunk-item';
+            div.id = `chunk-${chunk.index}`;
+            const statusClass = chunk.status;
+            const showAudio = chunk.status === 'done';
+            const showRetry = chunk.status === 'failed';
+            div.innerHTML = `
+                <div class="chunk-header">
+                    <span class="chunk-idx">#${chunk.index + 1}</span>
+                    <span class="chunk-badge ${statusClass}">${chunk.status}</span>
+                </div>
+                <div class="chunk-text">${escapeHtml(chunk.text)}</div>
+                ${showAudio ? `<audio controls src="${API}/api/jobs/${jobId}/chunks/${chunk.index}"></audio>` : ''}
+                <div class="chunk-actions">
+                    ${showAudio ? `<a class="btn secondary sm" href="${API}/api/jobs/${jobId}/chunks/${chunk.index}" target="_blank">DL</a>` : ''}
+                    ${showRetry ? `<button class="btn danger sm retry-btn" data-idx="${chunk.index}">Retry</button>` : ''}
+                    ${chunk.elapsed_seconds ? `<span style="font-size:11px;color:#666;">${chunk.elapsed_seconds.toFixed(1)}s</span>` : ''}
+                </div>
+            `;
+            const retryBtn = div.querySelector('.retry-btn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', async () => {
+                    retryBtn.disabled = true;
+                    try {
+                        const res = await fetch(`${API}/api/jobs/${jobId}/retry/${chunk.index}`, {method: 'POST'});
+                        if (res.ok) startMonitoring(jobId);
+                    } catch (e) { console.warn(e); retryBtn.disabled = false; }
+                });
+            }
+            return div;
+        }
+
+        function updateChunkEl(chunk, jobId) {
+            const existing = document.getElementById(`chunk-${chunk.index}`);
+            if (!existing) return;
+            // Only re-render if status changed to done/failed to inject audio/retry
+            const oldStatus = existing.querySelector('.chunk-badge').textContent;
+            if (oldStatus === chunk.status) return;
+            const parent = existing.parentNode;
+            parent.replaceChild(createChunkEl(chunk, jobId), existing);
+        }
+
+        async function loadJobs() {
+            try {
+                const res = await fetch(`${API}/api/jobs`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const container = document.getElementById('jobsList');
+                if (!data.jobs || data.jobs.length === 0) {
+                    container.innerHTML = '<div class="empty">No jobs yet</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                data.jobs.forEach(job => {
+                    const div = document.createElement('div');
+                    div.className = 'job-item' + (job.id === currentJobId ? ' active' : '');
+                    const created = new Date(job.created_at * 1000).toLocaleString();
+                    div.innerHTML = `
+                        <div class="job-header">
+                            <span class="job-id">${job.id}</span>
+                            <span class="job-status ${job.status}">${job.status}</span>
+                        </div>
+                        <div class="job-meta">${job.voice} • ${job.language} • ${job.completed_chunks}/${job.total_chunks} chunks</div>
+                        <div class="job-meta">${created}</div>
+                    `;
+                    div.addEventListener('click', () => {
+                        currentJobId = job.id;
+                        startMonitoring(job.id);
+                        // highlight
+                        document.querySelectorAll('.job-item').forEach(j => j.classList.remove('active'));
+                        div.classList.add('active');
+                    });
+                    container.appendChild(div);
+                });
+            } catch (e) { console.warn('Could not load jobs', e); }
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) return `${Math.ceil(seconds)}s`;
+            const m = Math.floor(seconds / 60);
+            const s = Math.ceil(seconds % 60);
+            return `${m}m ${s}s`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Init
+        loadVoices();
+        loadJobs();
+        setInterval(loadJobs, 5000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# === Runtime data (mounted as volumes, not copied into image) ===
+output/
+cache/
+voices/
+jobs/
+
+# === Git ===
+.git/
+.github/
+
+# === Environment ===
+.env
+.env.local
+.env.*.local
+
+# === Large binaries (not needed for build) ===
+*.wav
+*.pt
+*.bin
+*.safetensors
+assets/
+
+# === Python artifacts ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# === IDE / OS ===
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# === Docs / non-build files ===
+README.md
+LICENSE
+.gitignore
+.dockerignore
+examples/
+finetuning/
+generate_samples.py
+run_podcast_test.py

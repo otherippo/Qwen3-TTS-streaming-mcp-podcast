@@ -1,0 +1,133 @@
+services:
+  # GPU-enabled backend service (1.7B Base model only)
+  qwen3-tts-gpu:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: qwen3-tts-api
+    ports:
+      - "8884:8880"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8880
+      - TTS_MODEL_NAME=Qwen/Qwen3-TTS-12Hz-1.7B-Base
+      - TTS_DTYPE=float16
+      - TTS_WARMUP_ON_START=true
+      - TTS_CUSTOM_VOICES=/app/custom_voices
+      - TTS_VOICES_SCAN_DIR=/app/voices
+      - TTS_VOICE_PROMPT_CACHE_DIR=/app/cache/voice_prompts
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ${HF_CACHE_HOST_PATH}:/root/.cache/huggingface
+      - ./voices:/app/voices:ro
+      - ./cache:/app/cache
+      - ./output:/app/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # Extended proxy/wrapper service — CPU-only, provides chunking, job management, and Web UI
+  qwen3-tts-extended:
+    build:
+      context: ./extended
+      dockerfile: Dockerfile
+    container_name: qwen3-tts-extended
+    ports:
+      - "8883:8883"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8883
+      - BACKEND_URL=http://qwen3-tts-gpu:8880
+      - VOICES_DIR=/app/voices
+      - OUTPUT_DIR=/app/output
+      - CACHE_DIR=/app/cache
+      - CHUNK_SIZE=1200
+      - CORS_ORIGINS=*
+    volumes:
+      - ./voices:/app/voices:ro
+      - ./output:/app/output
+      - ./cache:/app/cache
+    depends_on:
+      qwen3-tts-gpu:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8883/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Unified API Gateway — single OpenAI-compatible endpoint for LLM + TTS
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: qwen3-tts-gateway
+    ports:
+      - "8885:8885"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8885
+      - LLAMA_URL=http://llama-cpp-server-cuda-qwen-only:8080
+      - TTS_URL=http://qwen3-tts-extended:8883
+      - TTS_BACKEND_URL=http://qwen3-tts-gpu:8880
+      - CORS_ORIGINS=*
+    depends_on:
+      qwen3-tts-extended:
+        condition: service_healthy
+    networks:
+      - default
+      - llama-cpp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8885/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # MCP Server — exposes Qwen3-TTS as MCP tools for OpenWebUI / Claude / etc.
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: qwen3-tts-mcp
+    ports:
+      - "8886:8886"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8886
+      - TTS_URL=http://qwen3-tts-extended:8883
+      - TTS_BACKEND_URL=http://qwen3-tts-gpu:8880
+      # Set SERVER_HOSTNAME to your host's LAN IP or hostname when accessing
+      # OpenWebUI from another machine (e.g. 192.168.1.50). Leave unset for
+      # same-machine usage (defaults to localhost).
+      - SERVER_HOSTNAME=${SERVER_HOSTNAME:-localhost}
+      # Optional full-URL override (takes precedence over SERVER_HOSTNAME).
+      # - PUBLIC_GATEWAY_URL=http://localhost:8885
+      - JOB_TIMEOUT_SECONDS=900
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-}
+    depends_on:
+      qwen3-tts-extended:
+        condition: service_healthy
+    networks:
+      - default
+      - llama-cpp-network
+    restart: unless-stopped
+
+networks:
+  llama-cpp-network:
+    name: llama-cpp-server-cuda-qwen-only_default
+    external: true

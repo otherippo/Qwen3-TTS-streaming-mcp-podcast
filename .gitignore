@@ -1,0 +1,39 @@
+# === Generated outputs & runtime caches ===
+output/
+cache/
+voices/
+jobs/
+
+# === Environment & secrets ===
+.env
+.env.local
+.env.*.local
+
+# === Large binary files ===
+*.wav
+*.pt
+*.bin
+*.safetensors
+
+# === Python artifacts ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# === IDE / OS ===
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# === Logs ===
+*.log
